@@ -76,6 +76,7 @@ plugin_stop()
 plugin_status()
 {
   ip4tables -L LOCAL_NAT
+
   return 0
 }
 
