@@ -50,35 +50,14 @@ fi
 # Check sanity of eg. environment
 sanity_check()
 {
-  if [ -z "$TRAFFIC_ACCOUNTING_CRON" ]; then
+  if [ -z "$PARASITIC_NET_CRON" ]; then
     printf "** ERROR: The plugin config file is not properly set! **" >&2
     return 1
   fi
 
-  # Check whether chains exists
-  if ! ip4tables -nL ACCOUNTING_INPUT_CHAIN >/dev/null 2>&1; then
-    echo "** ERROR: ACCOUNTING_INPUT_CHAIN does not exist! **" >&2
-    return 1
-  fi
-
-  if ! ip4tables -nL ACCOUNTING_OUTPUT_CHAIN >/dev/null 2>&1; then
-    echo "** ERROR: ACCOUNTING_OUTPUT_CHAIN does not exist! **" >&2
-    return 1
-  fi
-
-  # Check if chains inserted in the main chains
-#  if ! ip4tables -nL INPUT |grep -q '^ACCOUNTING_INPUT_CHAIN '; then
-#    echo "** ERROR: ACCOUNTING_INPUT_CHAIN is not inserted in the INPUT chain! **" >&2
-#    return 1
-#  fi
-
-#  if ! ip4tables -nL OUTPUT |grep -q '^ACCOUNTING_OUTPUT_CHAIN '; then
-#    echo "** ERROR: ACCOUNTING_OUTPUT_CHAIN is not inserted in the OUTPUT chain! **" >&2
-#    return 1
-#  fi
-
-  if ! check_command dig nslookup; then
-    echo "** ERROR: Required command dig (or nslookup) is not available!" >&2
+  # Check whether chain exists
+  if ! ip4tables -nL PARASITIC_NET_ACL >/dev/null 2>&1; then
+    echo "** ERROR: PARASITIC_NET_ACL does not exist! **" >&2
     return 1
   fi
 
@@ -88,209 +67,170 @@ sanity_check()
 
 parasitic_net_setup_rules()
 {
-  # Touch the log file (just in case it doesn't exist yet):
-  touch /var/log/traffic-accounting.log
+  # Flush the PARASITIC_NET_ACL
+  iptables -F PARASITIC_NET_ACL
 
-  # Truncate file
-  printf "" >/tmp/traffic-accounting.new
+  unset IFS
+  for rule in $PARASITIC_NET_HOST_DENY_TCP; do
+    if parse_rule "$rule" PARASITIC_NET_HOST_DENY_TCP "hosts-ports"; then
+      echo "${INDENT} Denying access to $hosts for TCP port(s): $ports"
 
-  # Process the input chain
-  if [ "$VERBOSE" = "1" ]; then
-    echo "Traffic Accounting Hosts:"
-    echo "-------------------------"
-  fi
-
-  # Also include default unicast route addresses, (0.0.0.0/0 and ::/0)
-  DEFAULT_ADDR="0.0.0.0/0"
-  if [ "$IPV6_SUPPORT" = "1" ]; then
-    DEFAULT_ADDR="$DEFAULT_ADDR ::/0"
-  fi
-
-  IFS=' ,'
-  for host in $TRAFFIC_ACCOUNTING_HOSTS $DEFAULT_ADDR; do
-    if [ "$VERBOSE" = "1" ]; then
-      printf "Host=$host "
-    fi
-
-    old_entry="$(grep "^$host " /var/log/traffic-accounting.log)"
-    old_ip="$(echo "$old_entry" |cut -s -d' ' -f2)"
-    old_in_value="$(echo "$old_entry" |cut -s -d' ' -f3)"
-    old_out_value="$(echo "$old_entry" |cut -s -d' ' -f4)"
-
-    # If value is non-existant make it zero
-    if [ -z "$old_in_value" ]; then
-      old_in_value=0
-    fi
-
-    # If value is non-existant make it zero
-    if [ -z "$old_out_value" ]; then
-      old_out_value=0
-    fi
-
-    # Get host_ip, if it fails, skip rule
-    if ! traffic_accounting_get_host "$host"; then
-      echo "** WARNING: Skipping rule for \"$host\"! **" >&2
-      continue
-    fi
-
-    echo "${INDENT}Monitoring host \"$host\""
-
-    if [ "$VERBOSE" = "1" ]; then
-      printf "old_ip=$old_ip host_ip=$host_ip "
-    fi
-
-    # Process input chain
-    OLDFOUND=0
-    if [ -n "$old_ip" ]; then
-      get_numeric_ip_version "$host_ip"
-      case $? in
-      4)
-        LCOUNT=0
-        IFS=$EOL
-        for LINE in `ip4tables -xnvL ACCOUNTING_INPUT_CHAIN |sed -e "1,2d"`; do
-          ipt_ip="$(echo "$LINE" |awk '{ print $8 }')"
-
-          LCOUNT=$(($LCOUNT + 1))
-          if [ "$ipt_ip" = "$old_ip" ]; then
-            ip4tables -R ACCOUNTING_INPUT_CHAIN $LCOUNT -s $host_ip -j RETURN
-            if [ "$VERBOSE" = "1" ]; then
-              printf "in_action=update "
-            fi
-            OLDFOUND=1
-            ipt_in_value="$(echo "$LINE" |awk '{ print $2 }')"
-
-            break
+      IFS=','
+      for host in `ip_range "$hosts"`; do
+        for port in $ports; do
+          if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+            ip4tables -A PARASITIC_NET_ACL -d $host -p tcp --dport $port -m limit --limit 1/m -j LOG \
+              --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
           fi
+
+          ip4tables -A PARASITIC_NET_ACL -d $host -p tcp --dport $port -j $PARASITIC_NET_DENY_POLICY
         done
-        ;;
-      6)
-        if [ "$IPV6_SUPPORT" = "1" ]; then
-          LCOUNT=0
-          IFS=$EOL
-          for LINE in `ip6tables -xnvL ACCOUNTING_INPUT_CHAIN |sed -e "1,2d"`; do
-            ipt_ip="$(echo "$LINE" |awk '{ print $7 }')"
-
-            LCOUNT=$(($LCOUNT + 1))
-            if [ "$ipt_ip" = "$old_ip" ]; then
-              ip6tables -R ACCOUNTING_INPUT_CHAIN $LCOUNT -s $host_ip -j RETURN
-              if [ "$VERBOSE" = "1" ]; then
-                printf "in_action=update "
-              fi
-              OLDFOUND=1
-              ipt_in_value="$(echo "$LINE" |awk '{ print $2 }')"
-
-              break
-            fi
-          done
-        fi
-        ;;
-      esac
-    fi
-
-    if [ $OLDFOUND -eq 0 ]; then
-      if [ "$VERBOSE" = "1" ]; then
-        printf "in_action=add "
-      fi
-
-      if [ "$host_ip" = "0.0.0.0/0" -o "$host_ip" = "::/0" ]; then
-        iptables -A ACCOUNTING_INPUT_CHAIN -s $host_ip -j RETURN
-      else
-        iptables -I ACCOUNTING_INPUT_CHAIN 1 -s $host_ip -j RETURN
-      fi
-
-      # Preset values to zero as none exist yet
-      ipt_in_value=0
-    fi
-
-    # Process output chain
-    OLDFOUND=0
-    if [ -n "$old_ip" ]; then
-      get_numeric_ip_version "$host_ip"
-      case $? in
-      4)
-        LCOUNT=0
-        IFS=$EOL
-        for LINE in `ip4tables -xnvL ACCOUNTING_OUTPUT_CHAIN |sed -e "1,2d"`; do
-          ipt_ip="$(echo "$LINE" |awk '{ print $9 }')"
-
-          LCOUNT=$(($LCOUNT + 1))
-          if [ "$ipt_ip" = "$old_ip" ]; then
-            ip4tables -R ACCOUNTING_OUTPUT_CHAIN $LCOUNT -d $host_ip -j RETURN
-            if [ "$VERBOSE" = "1" ]; then
-              printf "out_action=update "
-            fi
-            OLDFOUND=1
-            ipt_out_value="$(echo "$LINE" |awk '{ print $2 }')"
-
-            break
-          fi
-        done
-        ;;
-      6)
-        if [ "$IPV6_SUPPORT" = "1" ]; then
-          LCOUNT=0
-          IFS=$EOL
-          for LINE in `ip6tables -xnvL ACCOUNTING_OUTPUT_CHAIN |sed -e "1,2d"`; do
-            ipt_ip="$(echo "$LINE" |awk '{ print $8 }')"
-
-            LCOUNT=$(($LCOUNT + 1))
-            if [ "$ipt_ip" = "$old_ip" ]; then
-              ip6tables -R ACCOUNTING_OUTPUT_CHAIN $LCOUNT -d $host_ip -j RETURN
-              if [ "$VERBOSE" = "1" ]; then
-                printf "out_action=update "
-              fi
-              OLDFOUND=1
-              ipt_out_value="$(echo "$LINE" |awk '{ print $2 }')"
-
-              break
-            fi
-          done
-        fi
-        ;;
-      esac
-    fi
-
-    if [ $OLDFOUND -eq 0 ]; then
-      if [ "$VERBOSE" = "1" ]; then
-        printf "out_action=add "
-      fi
-
-      if [ "$host_ip" = "0.0.0.0/0" -o "$host_ip" = "::/0" ]; then
-        iptables -A ACCOUNTING_OUTPUT_CHAIN -d $host_ip -j RETURN
-      else
-        iptables -I ACCOUNTING_OUTPUT_CHAIN 1 -d $host_ip -j RETURN
-      fi
-
-      # Preset values to zero as none exist yet
-      ipt_out_value=0
-    fi
-
-    # Calculate new in value
-    new_in_value=$(($old_in_value + $ipt_in_value))
-
-    # Calculate new out value
-    new_out_value=$(($old_out_value + $ipt_out_value))
-    if [ "$VERBOSE" = "1" ]; then
-      printf "old_in_val=$old_in_value ipt_in_val=$ipt_in_value new_in_val=$new_in_value old_out_val=$old_out_value ipt_out_val=$ipt_out_value new_out_val=$new_out_value"
-    fi
-
-    # Create entry in accounting file
-    echo "$host $host_ip $new_in_value $new_out_value" >>/tmp/traffic-accounting.new
-
-    if [ "$VERBOSE" = "1" ]; then
-      printf "\n\n"
+      done
     fi
   done
 
-  # FIXME: Don't use old-file
-  if [ -e /var/log/traffic-accounting.log ]; then
-    if [ -e /var/log/traffic-accounting.log.old ]; then
-      rm -f /var/log/traffic-accounting.log.old
+  unset IFS
+  for rule in $PARASITIC_NET_HOST_DENY_UDP; do
+    if parse_rule "$rule" PARASITIC_NET_HOST_DENY_UDP "hosts-ports"; then
+      echo "${INDENT} Denying access to $hosts for UDP port(s): $ports"
+
+      IFS=','
+      for host in `ip_range "$hosts"`; do
+        for port in $ports; do
+          if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+            ip4tables -A PARASITIC_NET_ACL -d $host -p udp --dport $port -m limit --limit 1/m -j LOG \
+              --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
+          fi
+
+          ip4tables -A PARASITIC_NET_ACL -d $host -p udp --dport $port -j $PARASITIC_NET_DENY_POLICY
+        done
+      done
+    fi
+  done
+
+  IFS=' ,'
+  for hosts in $PARASITIC_NET_HOST_DENY_ICMP; do
+    echo "${INDENT} Denying access to $hosts for ICMP requests"
+
+    for host in `ip_range "$hosts"`; do
+      if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+        ip4tables -A PARASITIC_NET_ACL -d $host -p icmp --icmp-type echo-request -m limit --limit 1/m -j LOG \
+          --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
+      fi
+
+      ip4tables -A PARASITIC_NET_ACL -d $host -p icmp --icmp-type echo-request -j $PARASITIC_NET_DENY_POLICY
+    done
+  done
+
+  unset IFS
+  for rule in $PARASITIC_NET_HOST_DENY_IP; do
+    if parse_rule "$rule" PARASITIC_NET_HOST_DENY_IP "hosts-protos"; then
+      echo "${INDENT} Denying access to $hosts for IP protocol(s): $protos"
+      IFS=','
+      for host in `ip_range "$hosts"`; do
+        for proto in $protos; do
+          if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+            ip4tables -A PARASITIC_NET_ACL -d $host -p $proto -m limit --limit 1/m -j LOG \
+              --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
+          fi
+
+          ip4tables -A PARASITIC_NET_ACL -d $host -p $proto -j $PARASITIC_NET_DENY_POLICY
+        done
+      done
+    fi
+  done
+
+  unset IFS
+  for rule in $PARASITIC_NET_HOST_OPEN_TCP; do
+    if parse_rule "$rule" PARASITIC_NET_HOST_OPEN_TCP "hosts-ports"; then
+      echo "${INDENT} Allowing access to $hosts for TCP port(s): $ports"
+
+      IFS=','
+      for host in `ip_range "$hosts"`; do
+        for port in $ports; do
+          ip4tables -A PARASITIC_NET_ACL -d $host -p tcp --dport $port -j ACCEPT
+        done
+      done
+    fi
+  done
+
+  unset IFS
+  for rule in $PARASITIC_NET_HOST_OPEN_UDP; do
+    if parse_rule "$rule" PARASITIC_NET_HOST_OPEN_UDP "hosts-ports"; then
+      echo "${INDENT} Allowing access to $hosts for UDP port(s): $ports"
+
+      IFS=','
+      for host in `ip_range "$hosts"`; do
+        for port in $ports; do
+          ip4tables -A PARASITIC_NET_ACL -d $host -p udp --dport $port -j ACCEPT
+        done
+      done
+    fi
+  done
+
+  IFS=' ,'
+  for hosts in $PARASITIC_NET_HOST_OPEN_ICMP; do
+    echo "${INDENT} Allowing access to $hosts for ICMP requests"
+
+    for host in `ip_range "$hosts"`; do
+      ip4tables -A PARASITIC_NET_ACL -d $host -p icmp --icmp-type echo-request -j ACCEPT
+    done
+  done
+
+  unset IFS
+  for rule in $PARASITIC_NET_HOST_OPEN_IP; do
+    if parse_rule "$rule" PARASITIC_NET_HOST_OPEN_IP "hosts-protos"; then
+      echo "${INDENT} Allowing access to $hosts for IP protocol(s): $protos"
+
+      IFS=','
+      for host in `ip_range "$hosts"`; do
+        for proto in $protos; do
+          ip4tables -A PARASITIC_NET_ACL -d $host -p $proto -j ACCEPT
+        done
+      done
+    fi
+  done
+
+  # Set default policy
+  if [ -z "$PARASITIC_NET_HOST_OPEN_TCP" ]; then
+    ip4tables -A PARASITIC_NET_ACL -p tcp -j ACCEPT
+  else
+    if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+      ip4tables -A PARASITIC_NET_ACL -p tcp -m limit --limit 1/m -j LOG \
+        --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
     fi
 
-    mv /var/log/traffic-accounting.log /var/log/traffic-accounting.log.old
+    ip4tables -A PARASITIC_NET_ACL -p tcp -j $PARASITIC_NET_DENY_POLICY
   fi
-  mv /tmp/traffic-accounting.new /var/log/traffic-accounting.log
+
+  if [ -z "$PARASITIC_NET_HOST_OPEN_UDP" ]; then
+    ip4tables -A PARASITIC_NET_ACL -p udp -j ACCEPT
+  else
+    if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+      ip4tables -A PARASITIC_NET_ACL -p udp -m limit --limit 1/m -j LOG \
+        --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
+    fi
+
+    ip4tables -A PARASITIC_NET_ACL -p udp -j $PARASITIC_NET_DENY_POLICY
+  fi
+
+  if [ -z "$PARASITIC_NET_HOST_OPEN_ICMP" ]; then
+    ip4tables -A PARASITIC_NET_ACL -p icmp --icmp-type echo-request -j ACCEPT
+  else
+    if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+      ip4tables -A PARASITIC_NET_ACL -p icmp --icmp-type echo-request -m limit --limit 1/m -j LOG \
+        --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
+    fi
+
+    ip4tables -A PARASITIC_NET_ACL -p icmp --icmp-type echo-request -j $PARASITIC_NET_DENY_POLICY
+  fi
+
+  # Drop the rest ("Other" IP protocols always need to be specified explicitly)
+  if [ "$PARASITIC_NET_DENY_LOG" = "1" ]; then
+    ip4tables -A PARASITIC_NET_ACL -m limit --limit 1/m -j LOG \
+      --log-level $LOGLEVEL --log-prefix "AIF:Parasitic-net denied: "
+  fi
+  ip4tables -A PARASITIC_NET_ACL -j $PARASITIC_NET_DENY_POLICY
 }
 
 

@@ -1461,6 +1461,7 @@ get_dynamic_host_cached()
 }
 
 
+# Use lock_enter() to prevent running of multiple instances
 lock_enter()
 {
   local LOCK_FILE
@@ -1475,7 +1476,6 @@ lock_enter()
   local FAIL_COUNT=0
 
   while [ $FAIL_COUNT -lt 2 ]; do
-    # We don't want multiple instances so we use a lockfile
     if ( set -o noclobber; echo "$$" > "$LOCK_FILE") 2> /dev/null; then
       # Setup int handler
       trap 'ctrl_handler' INT TERM EXIT
