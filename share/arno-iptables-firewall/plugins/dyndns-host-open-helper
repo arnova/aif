@@ -176,7 +176,7 @@ dyndns_host_open()
 
 ctrl_handler()
 {
-  lock_leave
+  lock_leave "$LOCK_NAME"
 
   stty intr ^C # Back to normal
   exit         # Yep, I meant to do that... Kill/hang the shell.
@@ -204,7 +204,7 @@ else
   if [ "$ENABLED" = "1" ]; then
     # Only proceed if environment ok
     if sanity_check; then
-      # This is a critical section so we use a lockfile
+      # This is a critical section so we use a lock file
       if lock_enter "$LOCK_NAME"; then
         # Parse rules
         dyndns_host_open

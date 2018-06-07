@@ -1526,6 +1526,46 @@ lock_leave()
 }
 
 
+lock_wait()
+{
+  local LOCK_FILE cnt
+
+  if [ -z "$1" ]; then
+    # Global lock
+    LOCK_FILE="/var/lock/aif_global.lock"
+  else
+    LOCK_FILE="/var/lock/aif_$1.lock"
+  fi
+
+  # Wait for helper to stop, if running
+  cnt=5
+  while [ $cnt -gt 0 ] && [ -f "$LOCK_FILE" ]; do
+    cnt=$((cnt - 1))
+    sleep 1
+  done
+}
+
+
+lock_remove()
+{
+  local LOCK_FILE
+
+  LOCK_FILE="/var/lock/aif_$1.lock"
+
+  rm -f "$LOCK_FILE"
+}
+
+
+# Add (cron) job
+# $1 = Job name
+# $2 = Path to script/binary
+# $3 = Time in minutes between executes
+job_add()
+{
+
+}
+
+
 # Helper function to show interfaces / ips in front of verbose line
 # $1 =  interfaces. $2 = ips
 show_if_ip()
