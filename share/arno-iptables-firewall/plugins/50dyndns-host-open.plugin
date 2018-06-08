@@ -35,6 +35,8 @@ LOCK_NAME="dyndns_helper"
 # Plugin start function
 plugin_start()
 {
+  local BG_TIME
+
   # Create new DYNDNS_CHAIN chain:
   iptables -N DYNDNS_CHAIN 2>/dev/null
   iptables -F DYNDNS_CHAIN
@@ -45,8 +47,15 @@ plugin_start()
   # Remove stale lock file (if any)
   lock_remove "$LOCK_FILE"
 
-  # Create cron job
-  job_add "dyndns_host_open" "$PLUGIN_BIN_PATH/dyndns-host-open-helper >/dev/null" "$DYNDNS_HOST_OPEN_TIME"
+  if [ -z "$DYNDNS_HOST_OPEN_TIME" ]; then
+    # Default to 60 minutes
+    BG_TIME=60
+  else
+    BG_TIME="$DYNDNS_HOST_OPEN_TIME"
+  fi
+
+  # Create background job
+  job_add "dyndns_host_open" "$BG_TIME" "$PLUGIN_BIN_PATH/dyndns-host-open-helper >/dev/null"
 
   # Call the dyndns-helper script at startup?
   if [ "$DYNDNS_RUN_AT_START" = "1" ]; then

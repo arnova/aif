@@ -236,7 +236,7 @@ parasitic_net_setup_rules()
 
 ctrl_handler()
 {
-  lock_leave
+  lock_leave "$LOCK_NAME"
 
   stty intr ^C # Back to normal
   exit         # Yep, I meant to do that... Kill/hang the shell.

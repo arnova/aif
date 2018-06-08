@@ -1467,11 +1467,10 @@ lock_enter()
   local LOCK_FILE
 
   if [ -z "$1" ]; then
-    # Global lock
-    LOCK_FILE="/var/lock/aif_global.lock"
-  else
-    LOCK_FILE="/var/lock/aif_$1.lock"
+    echo "ERROR: Exception due to missing lock argument" >&2
   fi
+
+  LOCK_FILE="/var/lock/aif_$1.lock"
 
   local FAIL_COUNT=0
 
@@ -1512,11 +1511,10 @@ lock_leave()
   local LOCK_FILE
 
   if [ -z "$1" ]; then
-    # Global lock
-    LOCK_FILE="/var/lock/aif_global.lock"
-  else
-    LOCK_FILE="/var/lock/aif_$1.lock"
+    echo "ERROR: Exception due to missing lock argument" >&2
   fi
+
+  LOCK_FILE="/var/lock/aif_$1.lock"
 
   # Remove lockfile
   rm -f "$LOCK_FILE"
@@ -1531,11 +1529,10 @@ lock_wait()
   local LOCK_FILE cnt
 
   if [ -z "$1" ]; then
-    # Global lock
-    LOCK_FILE="/var/lock/aif_global.lock"
-  else
-    LOCK_FILE="/var/lock/aif_$1.lock"
+    echo "ERROR: Exception due to missing lock argument" >&2
   fi
+
+  LOCK_FILE="/var/lock/aif_$1.lock"
 
   # Wait for helper to stop, if running
   cnt=5
@@ -1550,19 +1547,80 @@ lock_remove()
 {
   local LOCK_FILE
 
+  if [ -z "$1" ]; then
+    echo "ERROR: Exception due to missing lock argument" >&2
+  fi
+
   LOCK_FILE="/var/lock/aif_$1.lock"
 
   rm -f "$LOCK_FILE"
 }
 
 
-# Add (cron) job
+# Remove (background) job
+# $1 = Job name
+job_remove()
+{
+  local SCRIPT_NAME
+
+  SCRIPT_NAME="$1"
+
+  # Remove job from jobs file
+  sed -i s,"^$SCRIPT_NAME[[:blank:]].*",, "$JOBS_FILE" 2>/dev/null
+}
+
+
+# Add (background) job
 # $1 = Job name
 # $2 = Path to script/binary
 # $3 = Time in minutes between executes
 job_add()
 {
+  local SCRIPT_NAME SCRIPT_TIME SCRIPT_PATH
 
+  SCRIPT_NAME="$1"
+  shift
+  SCRIPT_TIME="$1"
+  shift
+  SCRIPT_PATH="$*"
+
+  # First remove job (if one exists)
+  job_remove "$SCRIPT_NAME"
+
+  # Add new job to jobs file
+  echo "$SCRIPT_NAME $SCRIPT_TIME 0 $SCRIPT_PATH" >> "$JOBS_FILE"
+}
+
+
+# (Background) job processor
+job_process()
+{
+  local LINE SCRIPT_NAME SCRIPT_SET_TIME SCRIPT_CUR_TIME SCRIPT_PATH
+
+  if [ ! -e "$JOBS_FILE" ]; then
+    return # Nothing to do
+  fi
+
+  IFS=$EOL
+  while read LINE; do
+    SCRIPT_NAME="$(echo "$LINE" |cut -d' ' -f1)"
+    SCRIPT_SET_TIME="$(echo "$LINE" |cut -d' ' -f2)"
+    SCRIPT_CUR_TIME="$(echo "$LINE" |cut -d' ' -f3)"
+    SCRIPT_PATH="$(echo "$LINE" |cut -d' ' -f1,2,3 --complement)"
+
+    # Increment current time
+    SCRIPT_CUR_TIME=$((SCRIPT_CUR_TIME + 1))
+
+    if [ $SCRIPT_CUR_TIME -ge $SCRIPT_SET_TIME ]; then
+      # Countdown reached: Run script
+      . "$SCRIPT_PATH"
+
+      SCRIPT_CUR_TIME="0"
+    fi
+
+    # Update job
+    sed -i s,"^$SCRIPT_NAME[[:blank:]].*","$SCRIPT_NAME $SCRIPT_SET_TIME $SCRIPT_CUR_TIME $SCRIPT_PATH", "$JOBS_FILE"
+  done < "$JOBS_FILE"
 }
 
 
@@ -1887,8 +1945,11 @@ IP6TABLES_BATCH_FILE="/var/tmp/aif_ip6tables_batch"
 PLUGIN_LOAD_FILE="/var/tmp/aif_active_plugins"
 PLUGIN_LOAD_FILE_RESTART="/var/tmp/aif_active_plugins_restart"
 
-# Host cache: filled by the DynDNS-plugin and used compatible plugins
+# (Dynamic) host cache. Used by compatible plugins
 HOST_CACHE_FILE="/var/tmp/aif_host_cache"
+
+# File containing (background) jobs to run
+JOBS_FILE="/var/tmp/aif_jobs"
 
 # Check whether we also need to drop messages in a dedicated firewall log file
 if [ -z "$FIREWALL_LOG" ]; then
