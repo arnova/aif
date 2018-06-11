@@ -5001,7 +5001,7 @@ job_add()
 # Start jobs processor by creating a cron job
 jobs_process_start()
 {
-  echo " 0 5 10 15 20 25 30 35 40 45 50 55  root    \"$SHARE_PATH/aif-helper-process\" >/dev/null" >"/etc/cron.d/$CRON_PROCESS_JOB"
+  echo " 0 5 10 15 20 25 30 35 40 45 50 55  root    \"$USR_SHARE_PATH/aif-helper-process\" >/dev/null" >"/etc/cron.d/$CRON_PROCESS_JOB"
 }
 
 

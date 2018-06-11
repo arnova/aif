@@ -2012,6 +2012,13 @@ ICMPV6_MLD_TYPES="130 131 132 143"
 ######################################################################
 NF_CONNTRACK_STATE="-m conntrack --ctstate"
 
+# Set system wide share path, determined by the 
+if [ -z "$USR_SHARE_PATH" ]; then
+  # FIXME: For now we simply retrieve the path from what is specified for
+  #        our plugin path. Perhaps there's a smarter way?
+  USR_SHARE_PATH="$(dirname "$PLUGIN_BIN_PATH")"
+fi
+
 # Check plugin bin path and fallback in case it's empty
 #######################################################
 if [ -z "$PLUGIN_BIN_PATH" ]; then
