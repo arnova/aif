@@ -153,7 +153,7 @@ plugin_start()
   fi
 
   # Create background job
-  job_add "$JOB_NAME" $BG_TIME "$PLUGIN_BIN_PATH/traffic-accounting-helper >/dev/null"
+  job_add "$JOB_NAME" $BG_TIME "$PLUGIN_BIN_PATH/parasitic-net-helper >/dev/null"
 
   return 0
 }
