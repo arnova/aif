@@ -77,6 +77,52 @@ sanity_check()
 }
 
 
+# (Background) job processor
+job_process()
+{
+  local HELPER_PROCESS_TIMING=5 # Process jobs every 5 minutes
+  local LINE SCRIPT_NAME SCRIPT_SET_TIME SCRIPT_CUR_TIME SCRIPT_PATH READ_JOBS_FILE
+
+  if [ ! -f "$JOBS_FILE" ]; then
+    return # Nothing to do
+  fi
+
+  READ_JOBS_FILE="$(cat "$JOBS_FILE" 2>/dev/null)"
+
+  if [ -z "$READ_JOBS_FILE" ]; then
+    return # Nothing to do
+  fi
+
+  IFS=$EOL
+  for LINE in $READ_JOBS_FILE; do
+    SCRIPT_NAME="$(echo "$LINE" |cut -d' ' -f1)"
+    SCRIPT_SET_TIME="$(echo "$LINE" |cut -d' ' -f2)"
+    SCRIPT_CUR_TIME="$(echo "$LINE" |cut -d' ' -f3)"
+    SCRIPT_PATH="$(echo "$LINE" |cut -d' ' -f1,2,3 --complement)"
+
+    # Increment current time
+    SCRIPT_CUR_TIME=$((SCRIPT_CUR_TIME + HELPER_PROCESS_TIMING))
+
+    if [ $SCRIPT_CUR_TIME -ge $SCRIPT_SET_TIME ]; then
+      # Countdown reached: Run script
+      . "$SCRIPT_PATH"
+
+      # Reset counter
+      SCRIPT_CUR_TIME=0
+    fi
+
+    # As soon as the jobs file gets removed, stop processing
+    # FIXME: Need a better locking mechanism for this?
+    if [ ! -f "$JOBS_FILE" ]; then
+      break
+    fi
+
+    # Update job
+    sed -i s,"^$SCRIPT_NAME[[:blank:]].*","$SCRIPT_NAME $SCRIPT_SET_TIME $SCRIPT_CUR_TIME $SCRIPT_PATH", "$JOBS_FILE"
+  done
+}
+
+
 ############
 # Mainline #
 ############

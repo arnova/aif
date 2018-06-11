@@ -4959,6 +4959,45 @@ plugins_status()
 }
 
 
+# Remove (background) job
+# $1 = Job name
+job_remove()
+{
+  local SCRIPT_NAME
+
+  if [ ! -f "$JOBS_FILE" ]; then
+    return # Nothing to do
+  fi
+
+  SCRIPT_NAME="$1"
+
+  # Remove job from jobs file
+  sed -i s,"^$SCRIPT_NAME[[:blank:]].*",, "$JOBS_FILE"
+}
+
+
+# Add (background) job
+# $1 = Job name
+# $2 = Path to script/binary
+# $3 = Time in minutes between executes
+job_add()
+{
+  local SCRIPT_NAME SCRIPT_TIME SCRIPT_PATH
+
+  SCRIPT_NAME="$1"
+  shift
+  SCRIPT_TIME="$1"
+  shift
+  SCRIPT_PATH="$*"
+
+  # First remove job (if one exists)
+  job_remove "$SCRIPT_NAME"
+
+  # Add new job to jobs file
+  echo "$SCRIPT_NAME $SCRIPT_TIME 0 $SCRIPT_PATH" >> "$JOBS_FILE"
+}
+
+
 # Start jobs processor by creating a cron job
 jobs_process_start()
 {
