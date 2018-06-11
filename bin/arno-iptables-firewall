@@ -4959,6 +4959,24 @@ plugins_status()
 }
 
 
+# Start jobs processor by creating a cron job
+jobs_process_start()
+{
+  echo " 0 5 10 15 20 25 30 35 40 45 50 55  root    \"$SHARE_PATH/aif-helper-process\" >/dev/null" >"/etc/cron.d/$CRON_PROCESS_JOB"
+}
+
+
+# Stop jobs processor by removing the cron job
+jobs_process_stop()
+{
+  # Remove jobs file
+  rm -f "$JOBS_FILE"
+
+  # Remove cron job
+  rm -f "/etc/cron.d/$CRON_PROCESS_JOB"
+}
+
+
 # Here the actual iptables rules are loaded
 ###########################################
 setup_firewall_rules()
@@ -5033,9 +5051,17 @@ setup_firewall_rules()
     . $CUSTOM_RULES
   fi
 
+  # Make sure jobs processor is stopped before we start any plugins
+  #################################################################
+  jobs_process_start
+
   # Start (user) plugins
   ######################
   plugins_start
+
+  # Start jobs processor
+  ######################
+  jobs_process_start
 
   # Drop outgoing fragmented packets (this should in principle never happen because of netfilter's
   # packet defragmentation
@@ -5941,7 +5967,12 @@ show_help()
 
 main_stop()
 {
+  # Stop all plugins
   plugins_stop
+
+  # Stop jobs processor
+  jobs_process_stop
+
   if [ "$1" = "block" ]; then
     stop_block_firewall
   else
