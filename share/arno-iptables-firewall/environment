@@ -1483,13 +1483,14 @@ get_dynamic_host_cached()
 }
 
 
-# Use lock_enter() to prevent running of multiple instances
+# Lock function to prevent running of multiple instances
 lock_enter()
 {
   local LOCK_FILE
 
   if [ -z "$1" ]; then
     echo "ERROR: Exception due to missing lock argument" >&2
+    return 1 # Failure
   fi
 
   LOCK_FILE="/var/lock/aif_$1.lock"
@@ -1528,12 +1529,14 @@ lock_enter()
 }
 
 
+# Leave lock
 lock_leave()
 {
   local LOCK_FILE
 
   if [ -z "$1" ]; then
     echo "ERROR: Exception due to missing lock argument" >&2
+    return 1 # Failure
   fi
 
   LOCK_FILE="/var/lock/aif_$1.lock"
@@ -1552,6 +1555,7 @@ lock_wait()
 
   if [ -z "$1" ]; then
     echo "ERROR: Exception due to missing lock argument" >&2
+    return 1 # Failure
   fi
 
   LOCK_FILE="/var/lock/aif_$1.lock"
@@ -1571,6 +1575,7 @@ lock_remove()
 
   if [ -z "$1" ]; then
     echo "ERROR: Exception due to missing lock argument" >&2
+    return 1 # Failure
   fi
 
   LOCK_FILE="/var/lock/aif_$1.lock"
