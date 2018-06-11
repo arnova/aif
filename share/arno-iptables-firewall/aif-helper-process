@@ -1,0 +1,96 @@
+# ------------------------------------------------------------------------------
+#                           -= Arno's iptables firewall =-
+#               Single- & multi-homed firewall script with DSL/ADSL support
+#
+#                           ~ In memory of my dear father ~
+#
+# (C) Copyright 2001-2018 by Arno van Amersfoort & Lonnie Abelbeck
+# Homepage              : http://rocky.eld.leidenuniv.nl/
+# Email                 : a r n o v a AT r o c k y DOT e l d DOT l e i d e n u n i v DOT n l
+#                         (note: you must remove all spaces and substitute the @ and the .
+#                         at the proper locations!)
+# ------------------------------------------------------------------------------
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# version 2 as published by the Free Software Foundation.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# ------------------------------------------------------------------------------
+
+# Location of the main configuration file for the firewall
+##########################################################
+CONFIG_FILE=/etc/arno-iptables-firewall/firewall.conf
+
+# Use a lock file for protection
+LOCK_NAME="aif_helper_process"
+
+# Check if the main config file exists and if so load it
+########################################################
+if [ -e "$CONFIG_FILE" ]; then
+  . $CONFIG_FILE
+else
+  echo "** ERROR: Could not read configuration file $CONFIG_FILE!" >&2
+  echo "**        Please, check the file's location and (root) rights." >&2
+  exit 2
+fi
+
+# Check if the environment file exists and if so, load it
+#########################################################
+if [ -n "$ENV_FILE" ]; then
+  . "$ENV_FILE"
+else
+  if [ -f /usr/local/share/arno-iptables-firewall/environment ]; then
+    . /usr/local/share/arno-iptables-firewall/environment
+  else
+    if [ -f /usr/share/arno-iptables-firewall/environment ]; then
+      . /usr/share/arno-iptables-firewall/environment
+    else
+      echo "** ERROR: The environment file (ENV_FILE) has not been specified" >&2
+      echo "**        in the configuration file. Try upgrading your config-file!" >&2
+      exit 2
+    fi
+  fi
+fi
+
+
+# Check sanity of environment
+sanity_check()
+{
+  if [ -z "$JOBS_FILE" ]; then
+    echo "** ERROR: Missing JOBS_FILE declaration in environment file!" >&2
+    return 1
+  fi
+
+  if [ ! -f "$JOBS_FILE" ]; then
+    echo "** ERROR: JOBS_FILE($JOBS_FILE) does not exist!" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+
+############
+# Mainline #
+############
+
+# Only proceed if environment ok
+if sanity_check; then
+  # This is a critical section so we use a lock file
+  if lock_enter "$LOCK_NAME"; then
+    # Call jobs processor
+    job_process
+
+    # We're done
+    lock_leave "$LOCK_NAME"
+
+    exit 0
+  fi
+fi

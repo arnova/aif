@@ -1619,12 +1619,13 @@ job_add()
 }
 
 
-# (Background) job processor
+# (Background) job processor, normally only called from the helper process script
 job_process()
 {
+  local HELPER_PROCESS_TIMING=5
   local LINE SCRIPT_NAME SCRIPT_SET_TIME SCRIPT_CUR_TIME SCRIPT_PATH
 
-  if [ ! -e "$JOBS_FILE" ]; then
+  if [ ! -f "$JOBS_FILE" ]; then
     return # Nothing to do
   fi
 
@@ -1636,13 +1637,14 @@ job_process()
     SCRIPT_PATH="$(echo "$LINE" |cut -d' ' -f1,2,3 --complement)"
 
     # Increment current time
-    SCRIPT_CUR_TIME=$((SCRIPT_CUR_TIME + 1))
+    SCRIPT_CUR_TIME=$((SCRIPT_CUR_TIME + HELPER_PROCESS_TIMING))
 
     if [ $SCRIPT_CUR_TIME -ge $SCRIPT_SET_TIME ]; then
       # Countdown reached: Run script
       . "$SCRIPT_PATH"
 
-      SCRIPT_CUR_TIME="0"
+      # Reset counter
+      SCRIPT_CUR_TIME=0
     fi
 
     # Update job
