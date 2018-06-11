@@ -4,40 +4,8 @@
 ###############################
 PLUGIN_CONF_FILE="traffic-accounting.conf"
 
-# Location of the main configuration file for the firewall
-##########################################################
-CONFIG_FILE=/etc/arno-iptables-firewall/firewall.conf
-
 # Use a lock file for protection
 LOCK_NAME="traffic_accounting_helper"
-
-# Check if the main config file exists and if so load it
-########################################################
-if [ -e "$CONFIG_FILE" ]; then
-  . $CONFIG_FILE
-else
-  echo "** ERROR: Could not read configuration file $CONFIG_FILE!" >&2
-  echo "**        Please, check the file's location and (root) rights." >&2
-  exit 2
-fi
-
-# Check if the environment file exists and if so, load it
-#########################################################
-if [ -n "$ENV_FILE" ]; then
-  . "$ENV_FILE"
-else
-  if [ -f /usr/local/share/arno-iptables-firewall/environment ]; then
-    . /usr/local/share/arno-iptables-firewall/environment
-  else
-    if [ -f /usr/share/arno-iptables-firewall/environment ]; then
-      . /usr/share/arno-iptables-firewall/environment
-    else
-      echo "** ERROR: The environment file (ENV_FILE) has not been specified" >&2
-      echo "**        in the configuration file. Try upgrading your config-file!" >&2
-      exit 2
-    fi
-  fi
-fi
 
 # Define some global variables
 INDENT='   '
