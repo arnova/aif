@@ -5001,7 +5001,7 @@ job_add()
 # Start jobs processor by creating a cron job
 jobs_process_start()
 {
-  echo " 0 5 10 15 20 25 30 35 40 45 50 55  root    \"$USR_SHARE_PATH/aif-helper-process\" >/dev/null" >"/etc/cron.d/$CRON_PROCESS_JOB"
+  echo " 0 5 10 15 20 25 30 35 40 45 50 55  root    \"$USR_SHARE_PATH/aif-helper-process\" >/dev/null" >"$CRON_PROCESS_JOB"
 }
 
 
@@ -5012,7 +5012,7 @@ jobs_process_stop()
   rm -f "$JOBS_FILE"
 
   # Remove cron job
-  rm -f "/etc/cron.d/$CRON_PROCESS_JOB"
+  rm -f "$CRON_PROCESS_JOB"
 }
 
 
@@ -5092,7 +5092,7 @@ setup_firewall_rules()
 
   # Make sure jobs processor is stopped before we start any plugins
   #################################################################
-  jobs_process_start
+  jobs_process_stop
 
   # Start (user) plugins
   ######################
@@ -5100,7 +5100,9 @@ setup_firewall_rules()
 
   # Start jobs processor
   ######################
-  jobs_process_start
+  if [ -n "$JOBS_FILE" -a -e "$JOBS_FILE" ]; then
+    jobs_process_start
+  fi
 
   # Drop outgoing fragmented packets (this should in principle never happen because of netfilter's
   # packet defragmentation

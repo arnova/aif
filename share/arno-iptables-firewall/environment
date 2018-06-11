@@ -1911,6 +1911,9 @@ HOST_CACHE_FILE="/var/tmp/aif_host_cache"
 # File containing (background) jobs to run
 JOBS_FILE="/var/tmp/aif_jobs"
 
+# Cron job for our background processor
+CRON_PROCESS_JOB="/etc/cron.d/aif_process_job"
+
 # Check whether we also need to drop messages in a dedicated firewall log file
 if [ -z "$FIREWALL_LOG" ]; then
   FIREWALL_LOG="/dev/null"
