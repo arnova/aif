@@ -61,16 +61,16 @@ plugin_start()
   iptables -N ADAPTIVE_BAN_CHAIN 2>/dev/null
   iptables -F ADAPTIVE_BAN_CHAIN
   if [ "$ADAPTIVE_BAN_WHITELIST_INTERNAL" != "0" ]; then
-    printf "${INDENT}Adaptive Ban - Whitelisting INTERNAL net(s): "
+    print_msg "Adaptive Ban - Whitelisting INTERNAL net(s): "
     IFS=' ,'
     for net in $INTERNAL_NET; do
-      printf "$net "
+      print_msg "$net "
       iptables -A ADAPTIVE_BAN_CHAIN -s $net -j RETURN
     done
     echo ""
   fi
   if [ -n "$ADAPTIVE_BAN_WHITELIST" ]; then
-    printf "${INDENT}Adaptive Ban - Whitelisting host(s): "
+    print_msg "Adaptive Ban - Whitelisting host(s): "
     IFS=' ,'
     for host in $ADAPTIVE_BAN_WHITELIST; do
       printf "$host "

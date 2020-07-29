@@ -1886,6 +1886,18 @@ log_msg()
 }
 
 
+print_msg()
+{
+  printf "${INDENT}$@"
+}
+
+
+print_error_msg()
+{
+  printf "${INDENT}\033[40m\033[1;31m${@}\033[0m"
+}
+
+
 # Display progress bar, 0% to 100% in 2% increments
 progress_bar()
 {
